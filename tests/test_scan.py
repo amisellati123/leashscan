@@ -51,7 +51,7 @@ def test_clean_project_gets_an_A(tmp_path):
     (tmp_path / ".mcp.json").write_text(encoding="utf-8", data=json.dumps({"mcpServers": {
         "gh": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-github@2025.4.8"],
                "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}}}}))
-    (tmp_path / "README.md").write_text("# hi\nEmoji family: 👨‍👩‍👧 works fine.\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("# hi\nEmoji family: 👨\u200d👩\u200d👧 works fine.\n", encoding="utf-8")
     found = cli.scan_paths([tmp_path], False, 1_000_000)
     assert rules(found) <= {"MCP010"}, found
     assert score(found)[1] == "A"
@@ -192,7 +192,7 @@ def test_env_gitignore_in_nested_repos(tmp_path):
 def test_editor_extensions_skipped(tmp_path):
     ext = tmp_path / ".vscode" / "extensions" / "github.copilot-chat-0.45.1"
     ext.mkdir(parents=True)
-    (ext / "package.nls.ru.json").write_text(encoding="utf-8", data="{\"a\": \"x​y​z​w​q\"}")
+    (ext / "package.nls.ru.json").write_text(encoding="utf-8", data="{\"a\": \"x\u200by\u200bz\u200bw\u200bq\"}")
     assert injection.scan(tmp_path, 1_000_000) == []
 
 
@@ -269,3 +269,13 @@ def test_cli_credential_stores_not_double_reported(tmp_path, monkeypatch):
     (tmp_path / ".aws" / "credentials").write_text(encoding="utf-8", data="aws_access_key_id = " + "AKIA" + "Q7XLM2RT9KPZ4VWB\naws_secret_access_key = abc\n")
     assert secrets.scan_repo(tmp_path, 1_000_000) == []
     assert [f.rule_id for f in secrets.scan_home(tmp_path)] == ["HOME002"]
+
+
+def test_windows_line_endings_reports_not_rescanned(tmp_path):
+    root = make_demo.build(tmp_path / "leaky")
+    for fmt, ext in [("html", "html"), ("text", "txt"), ("json", "json")]:
+        out = root / f"r.{ext}"
+        cli.main([str(root), "-f", fmt, "-o", str(out)])
+        out.write_bytes(out.read_bytes().replace(b"\n", b"\r\n"))
+    found = cli.scan_paths([root], False, 1_000_000)
+    assert not [f.path for f in found if f.path.startswith("r.")]

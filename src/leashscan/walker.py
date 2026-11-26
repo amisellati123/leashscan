@@ -44,6 +44,7 @@ NEVER_SKIP = {"agents.md", "claude.md", "gemini.md", ".cursorrules", ".windsurfr
 def is_leashscan_report(path: Path, text: str) -> bool:
     if path.name.lower() in NEVER_SKIP:
         return False
+    text = text[:2000].replace("\r\n", "\n")  # reports saved on Windows have CRLF line endings
     if text.startswith(REPORT_PREFIXES):
         return True
     # SARIF: our driver block sits right at the top of the run
