@@ -21,7 +21,12 @@ SKIP_SUFFIXES = (
 # Top-level folders of a home directory that hold app data and caches, not projects.
 SKIP_AT_HOME = {"Library", ".Trash", ".cache", ".npm", ".cargo", ".rustup", ".pyenv", ".nvm",
                 ".gradle", ".m2", "go", ".docker", "Music", "Movies", "Pictures", "AppData", "snap"}
+# Installed editor extensions: vendor code and translations, not your project or agent config.
+SKIP_PATHS = (".vscode/extensions", ".vscode-insiders/extensions", ".cursor/extensions",
+              ".windsurf/extensions", ".vscode-oss/extensions", ".vscode-server/extensions",
+              ".cursor-server/extensions", ".antigravity/extensions", ".kiro/extensions")
 MAX_FILES = 100_000
+LIMIT_HIT: list[Path] = []  # roots where the file cap was reached, so the report can warn
 
 # Reports written by leashscan quote the suspicious text they found, so don't re-scan them.
 # Strict: the file must *start* like one of our reports, and agent instruction files never count.
@@ -52,9 +57,13 @@ def iter_files(root: Path, max_size: int = 1_000_000) -> Iterator[Path]:
     at_home = root.resolve() == Path.home().resolve()
     for dirpath, dirnames, filenames in os.walk(root):
         top = at_home and Path(dirpath).resolve() == root.resolve()
+        rel_dir = Path(dirpath).relative_to(root).as_posix()
+        def sub(d: str) -> str:
+            return d if rel_dir == "." else f"{rel_dir}/{d}"
         dirnames[:] = [d for d in dirnames
                        if d not in SKIP_DIRS and not d.endswith(SKIP_SUFFIXES)
-                       and not (top and d in SKIP_AT_HOME)]
+                       and not (top and d in SKIP_AT_HOME)
+                       and not any(sub(d) == sp or sub(d).endswith("/" + sp) for sp in SKIP_PATHS)]
         for name in filenames:
             p = Path(dirpath) / name
             try:
@@ -64,6 +73,8 @@ def iter_files(root: Path, max_size: int = 1_000_000) -> Iterator[Path]:
                 continue
             count += 1
             if count > MAX_FILES:
+                if root not in LIMIT_HIT:
+                    LIMIT_HIT.append(root)
                 return
             yield p
 
@@ -99,38 +110,79 @@ def display(path: Path, root: Path) -> str:
 
 
 class IgnoreChecker:
-    """Answers "is this path gitignored?" using git when possible."""
+    """Answers "is this file in a git repo, ignored, or committed?" for every nested repo, not just the root."""
 
     def __init__(self, root: Path):
-        self.root = root
-        self.use_git = (root / ".git").exists() and _has_git()
-        self.patterns: list[str] = []
-        gi = root / ".gitignore"
-        if gi.is_file():
-            for raw in gi.read_text(errors="ignore").splitlines():
-                line = raw.strip()
-                if line and not line.startswith("#") and not line.startswith("!"):
-                    self.patterns.append(line.rstrip("/"))
+        self.root = Path(root).resolve()
+        self.has_git = _has_git()
+        self._repo_cache: dict[Path, Path | None] = {}
+        self._gi_cache: dict[Path, list[str]] = {}
+
+    def repo_of(self, path: Path) -> Path | None:
+        d = Path(path).resolve().parent
+        chain = []
+        found = None
+        while True:
+            if d in self._repo_cache:
+                found = self._repo_cache[d]
+                break
+            chain.append(d)
+            if (d / ".git").exists():
+                found = d
+                break
+            if d.parent == d:
+                break
+            d = d.parent
+        for c in chain:
+            self._repo_cache[c] = found
+        return found
+
+    def in_repo(self, path: Path) -> bool:
+        return self.repo_of(path) is not None
+
+    def _git(self, repo: Path, *args: str) -> int | None:
+        if not self.has_git:
+            return None
+        try:
+            return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, timeout=5).returncode
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    def tracked(self, path: Path) -> bool:
+        repo = self.repo_of(path)
+        return bool(repo) and self._git(repo, "ls-files", "--error-unmatch", str(Path(path).resolve())) == 0
 
     def ignored(self, path: Path) -> bool:
-        if self.use_git:
-            try:
-                r = subprocess.run(
-                    ["git", "-C", str(self.root), "check-ignore", "-q", str(path)],
-                    capture_output=True, timeout=5,
-                )
-                return r.returncode == 0
-            except (OSError, subprocess.SubprocessError):
-                pass
-        rel = str(path.relative_to(self.root)).replace(os.sep, "/")
-        name = path.name
-        for pat in self.patterns:
-            p = pat.lstrip("/")
-            if fnmatch.fnmatch(name, p) or fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(rel, p + "/*"):
-                return True
-            if any(fnmatch.fnmatch(part, p) for part in rel.split("/")[:-1]):
-                return True
+        path = Path(path).resolve()
+        repo = self.repo_of(path)
+        if repo is not None:
+            rc = self._git(repo, "check-ignore", "-q", str(path))
+            if rc in (0, 1):
+                return rc == 0
+        # Fallback: every .gitignore from the repo (or scan root) down to the file's folder.
+        top = repo or self.root
+        dirs = [d for d in [path.parent, *path.parent.parents] if d == top or top in d.parents]
+        for d in dirs:
+            rel = path.relative_to(d).as_posix()
+            for pat in self._patterns(d):
+                p = pat.lstrip("/")
+                if fnmatch.fnmatch(path.name, p) or fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(rel, p + "/*"):
+                    return True
+                if any(fnmatch.fnmatch(part, p) for part in rel.split("/")[:-1]):
+                    return True
         return False
+
+    def _patterns(self, d: Path) -> list[str]:
+        if d not in self._gi_cache:
+            pats = []
+            gi = d / ".gitignore"
+            if gi.is_file():
+                for raw in gi.read_text(errors="ignore").splitlines():
+                    line = raw.strip()
+                    if line and not line.startswith("#") and not line.startswith("!"):
+                        pats.append(line.rstrip("/"))
+            self._gi_cache[d] = pats
+        return self._gi_cache[d]
 
 
 def _has_git() -> bool:

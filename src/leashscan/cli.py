@@ -127,6 +127,11 @@ def main(argv: list[str] | None = None) -> int:
         color = report.use_color(args.no_color) and not args.output
         out = report.text_report(findings, targets, color, args.verbose)
 
+    from .walker import LIMIT_HIT, MAX_FILES
+    for r in LIMIT_HIT:
+        print(f"leashscan: warning: stopped after {MAX_FILES:,} files in {r}; results are incomplete. "
+              "Scan specific project folders instead.", file=sys.stderr)
+
     if args.output:
         Path(args.output).write_text(out, encoding="utf-8")
         _, grade = report.score(findings)

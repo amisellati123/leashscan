@@ -9,6 +9,7 @@ Secrets here are fake and assembled at runtime so no secret-looking strings are 
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +20,10 @@ def fake(prefix: str, n: int, alphabet: str = "Q7xLm2Rt9KpZ4vWb8NcY3hFd6GsJ5") -
 
 def build(root: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
+    try:  # a real project is a git repo, which is what makes an un-ignored .env dangerous
+        subprocess.run(["git", "init", "-q", str(root)], check=False, capture_output=True)
+    except OSError:
+        pass
     (root / "src").mkdir(exist_ok=True)
     (root / ".claude").mkdir(exist_ok=True)
     (root / ".cursor").mkdir(exist_ok=True)
