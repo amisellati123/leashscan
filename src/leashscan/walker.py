@@ -13,13 +13,48 @@ SKIP_DIRS = {
     ".tox", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".next", ".nuxt",
     "target", ".gradle", ".idea", "vendor", "coverage", ".terraform", "site-packages",
 }
-MAX_FILES = 25_000
+# macOS app bundles and media libraries: huge, full of caches and OCR text, never agent config.
+SKIP_SUFFIXES = (
+    ".photoslibrary", ".photolibrary", ".musiclibrary", ".tvlibrary", ".app", ".bundle",
+    ".framework", ".xcarchive", ".dSYM", ".lrcat", ".lrdata", ".fcpbundle", ".imovielibrary",
+)
+# Top-level folders of a home directory that hold app data and caches, not projects.
+SKIP_AT_HOME = {"Library", ".Trash", ".cache", ".npm", ".cargo", ".rustup", ".pyenv", ".nvm",
+                ".gradle", ".m2", "go", ".docker", "Music", "Movies", "Pictures", "AppData", "snap"}
+MAX_FILES = 100_000
+
+# Reports written by leashscan quote the suspicious text they found, so don't re-scan them.
+# Strict: the file must *start* like one of our reports, and agent instruction files never count.
+REPORT_PREFIXES = (
+    "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
+    "content=\"width=device-width,initial-scale=1\">\n<title>AI Agent Exposure Report \u00b7 leashscan</title>",
+    "{\n  \"tool\": \"leashscan\",",
+    "## \U0001F415 leashscan: grade",
+    "\n  leashscan  v",
+)
+NEVER_SKIP = {"agents.md", "claude.md", "gemini.md", ".cursorrules", ".windsurfrules", ".clinerules",
+              "copilot-instructions.md", "readme.md"}
+
+
+def is_leashscan_report(path: Path, text: str) -> bool:
+    if path.name.lower() in NEVER_SKIP:
+        return False
+    if text.startswith(REPORT_PREFIXES):
+        return True
+    # SARIF: our driver block sits right at the top of the run
+    return text.startswith('{\n  "$schema": "https://json.schemastore.org/sarif-2.1.0.json"') and \
+        '"driver": {\n            "name": "leashscan"' in text[:400]
 
 
 def iter_files(root: Path, max_size: int = 1_000_000) -> Iterator[Path]:
     count = 0
+    root = Path(root)
+    at_home = root.resolve() == Path.home().resolve()
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        top = at_home and Path(dirpath).resolve() == root.resolve()
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not d.endswith(SKIP_SUFFIXES)
+                       and not (top and d in SKIP_AT_HOME)]
         for name in filenames:
             p = Path(dirpath) / name
             try:
@@ -41,9 +76,12 @@ def read_text(path: Path) -> str | None:
     if b"\x00" in data[:4096]:
         return None
     try:
-        return data.decode("utf-8")
+        text = data.decode("utf-8")
     except UnicodeDecodeError:
-        return data.decode("latin-1")
+        text = data.decode("latin-1")
+    if is_leashscan_report(path, text):
+        return None
+    return text
 
 
 def line_of(text: str, index: int) -> int:

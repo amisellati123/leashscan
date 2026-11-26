@@ -1,4 +1,4 @@
 """leashscan: see what your AI coding agents can reach."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 REPO_URL = "https://github.com/amisellati123/leashscan"

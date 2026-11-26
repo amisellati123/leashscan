@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leashscan"
-version = "0.1.1"
+version = "0.1.2"
 description = "Is your AI agent on a leash? Scan what Claude Code, Cursor, Codex, Copilot and MCP servers can reach: secrets, risky configs, YOLO permissions and hidden prompt injection."
 readme = "README.md"
 license = "MIT"
