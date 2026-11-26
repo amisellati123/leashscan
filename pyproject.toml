@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "leashscan"
 version = "0.1.0"
 description = "Is your AI agent on a leash? Scan what Claude Code, Cursor, Codex, Copilot and MCP servers can reach: secrets, risky configs, YOLO permissions and hidden prompt injection."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.9"
 dependencies = []
 keywords = ["security", "ai-agents", "mcp", "claude-code", "cursor", "codex", "prompt-injection", "secrets", "scanner", "devsecops"]
@@ -15,7 +15,6 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Topic :: Security",
 ]

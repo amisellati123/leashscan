@@ -10,7 +10,7 @@ from pathlib import Path
 try:
     import tomllib
 except ModuleNotFoundError:  # Python < 3.11
-    tomllib = None  # type: ignore
+    from . import minitoml as tomllib  # type: ignore
 
 from .findings import Finding
 from .patterns import SECRET_NAME, is_env_reference, looks_like_placeholder, match_known_secret, redact
@@ -45,8 +45,6 @@ def load_servers(path: Path) -> dict[str, dict]:
         return {}
     data: object
     if path.suffix == ".toml":
-        if tomllib is None:
-            return {}
         try:
             data = tomllib.loads(text)
         except Exception:

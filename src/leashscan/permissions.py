@@ -8,8 +8,8 @@ from pathlib import Path
 
 try:
     import tomllib
-except ModuleNotFoundError:
-    tomllib = None  # type: ignore
+except ModuleNotFoundError:  # Python < 3.11
+    from . import minitoml as tomllib  # type: ignore
 
 from .findings import Finding
 from .walker import display, read_text
@@ -85,8 +85,6 @@ def _claude(path: Path, where: str, is_project: bool) -> list[Finding]:
 
 
 def _codex(path: Path, where: str) -> list[Finding]:
-    if tomllib is None:
-        return []
     try:
         data = tomllib.loads(read_text(path) or "")
     except Exception:
