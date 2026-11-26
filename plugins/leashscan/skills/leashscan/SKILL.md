@@ -6,7 +6,7 @@ compatibility: Needs Python 3.9+ to run the leashscan CLI from PyPI (via uvx, pi
 allowed-tools: Bash(leashscan:*) Bash(uvx leashscan:*) Bash(pipx run leashscan:*)
 metadata:
   author: amisellati123
-  version: "0.1.5"
+  version: "0.1.6"
   homepage: https://github.com/amisellati123/leashscan
 ---
 
@@ -34,7 +34,7 @@ Run `leashscan --version`. If it is not found, try `uvx leashscan --version`, th
 
 ## Step 3: Run the scan
 
-Run the command from step 2 and read the JSON. Its fields:
+Run the command from step 2 on its own: do not add `; echo`, `&&`, pipes or redirects, so the pre-approved `leashscan` permission covers it and the user isn't asked again. Then read the JSON. Its fields:
 
 - `grade` (A best to F worst), `score` (0 to 100), `counts` per severity
 - `findings`: a list, each with `rule_id`, `severity` (critical, high, medium, low), `category`, `title`, `path`, `line`, `detail`, `fix`

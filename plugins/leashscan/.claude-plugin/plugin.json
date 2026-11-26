@@ -1,6 +1,6 @@
 {
   "name": "leashscan",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Audit what AI coding agents and MCP servers can reach (leaked keys, exposed .env files, risky MCP servers, auto-approve permissions, hidden prompt injection) and fix it with your approval.",
   "author": {
     "name": "Abdulraouf Misellati",

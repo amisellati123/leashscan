@@ -96,7 +96,7 @@ jobs:
     permissions: { contents: read, security-events: write }
     steps:
       - uses: actions/checkout@v5
-      - uses: amisellati123/leashscan@v0.1.5
+      - uses: amisellati123/leashscan@v0.1.6
         with:
           fail-on: high
 ```
