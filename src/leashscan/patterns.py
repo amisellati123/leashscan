@@ -7,7 +7,9 @@ import re
 # (rule_id, name, severity, regex)
 SECRET_PATTERNS: list[tuple[str, str, str, re.Pattern]] = [
     ("SEC001", "Private key", "critical",
-     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----")),
+     # header followed by real key material, not code/docs that merely mention the header
+     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----"
+                r"(?:\r?\n|\\n)(?:[A-Za-z0-9+/=:\- ]+(?:\r?\n|\\n)){0,3}[A-Za-z0-9+/=]{40,}")),
     ("SEC002", "AWS access key", "critical", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("SEC003", "GitHub token", "critical",
      re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})\b")),
@@ -20,9 +22,32 @@ SECRET_PATTERNS: list[tuple[str, str, str, re.Pattern]] = [
     ("SEC010", "npm token", "high", re.compile(r"\bnpm_[A-Za-z0-9]{36}\b")),
 ]
 
+# Generic "name = value" secrets. Only used on config files, only for clearly secret field names.
 GENERIC_ASSIGN = re.compile(
-    r"(?im)^\s*(?:export\s+)?[\"']?([A-Z0-9_]*(?:SECRET|TOKEN|API_?KEY|PASSWORD|PASSWD|PRIVATE_KEY)[A-Z0-9_]*)[\"']?"
-    r"\s*[:=]\s*[\"']?([^\s\"'#,}]{12,})"
+    r"(?im)^\s*(?:export\s+)?[\"']?([A-Za-z0-9_.\-]*?(?:secret|token|api_?key|apikey|password|passwd|pwd|"
+    r"private_?key|access_?key|client_?secret|auth_?token|authtoken))[\"']?\s*[:=]\s*[\"']?([^\s\"'#,}]{8,})"
+)
+NOT_SECRET_NAME = re.compile(r"(?i)(tokens|_?name|_?url|_?uri|_?id|_?path|_?file|_?type|_?count|max|min|limit|"
+                             r"hashed|length|endpoint|header|prefix|_?env|_?ref|_?field|policy|expire|ttl)$")
+CONFIG_EXT = {".yml", ".yaml", ".ini", ".conf", ".cfg", ".properties", ".toml", ".env", ".json", ""}
+
+
+def looks_random(value: str) -> bool:
+    """True for values that look like generated credentials rather than words or identifiers."""
+    import math
+    v = value.strip()
+    if len(v) < 10 or re.search(r"[./\\]{1}.*[./\\]", v) or re.fullmatch(r"[a-z_]+|[A-Z_]+|[a-z]+(?:[A-Z][a-z]+)+", v):
+        return False
+    if not (re.search(r"[A-Za-z]", v) and re.search(r"\d", v)):
+        return False
+    freq = {c: v.count(c) for c in set(v)}
+    entropy = -sum(n / len(v) * math.log2(n / len(v)) for n in freq.values())
+    return entropy >= 3.0
+
+
+TEST_PATH = re.compile(
+    r"(^|/)(tests?|__tests__|spec|specs|fixtures?|testdata|test_data|examples?|docs_src|samples?|mocks?|__mocks__|"
+    r"cookbook|tutorials?)(/|$)|\.(test|spec)\.[cm]?[jt]sx?$|_test\.(go|py|rb)$|(^|/)test_[^/]*\.py$"
 )
 
 PLACEHOLDER = re.compile(

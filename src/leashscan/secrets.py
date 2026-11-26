@@ -9,7 +9,8 @@ from pathlib import Path
 
 from .findings import Finding
 from .patterns import (
-    GENERIC_ASSIGN, SECRET_PATTERNS, looks_like_placeholder, redact,
+    CONFIG_EXT, GENERIC_ASSIGN, NOT_SECRET_NAME, SECRET_PATTERNS, TEST_PATH, looks_like_placeholder,
+    looks_random, redact,
 )
 from .walker import IgnoreChecker, display, iter_files, line_of, read_text
 
@@ -37,12 +38,30 @@ def is_env_file(name: str) -> bool:
     return (name == ".env" or name.startswith(".env.") or name.endswith(".env")) and not name.endswith(ENV_SAFE_SUFFIXES)
 
 
+# Where CLIs are *supposed* to keep logins. Reported once, calmly, by scan_home (--home).
+CREDENTIAL_STORES = (
+    ".aws/", ".ssh/", ".kube/", ".docker/config.json", ".config/gh/", ".config/gcloud/", ".azure/",
+    ".npmrc", ".pypirc", ".netrc", ".git-credentials", ".claude.json", ".claude/.credentials.json",
+    ".codex/auth.json", ".gemini/oauth_creds.json", ".config/github-copilot/", ".terraform.d/credentials",
+)
+
+
+def _is_credential_store(path: Path) -> bool:
+    try:
+        rel = path.resolve().relative_to(Path.home().resolve()).as_posix()
+    except ValueError:
+        return False
+    return any(rel == c or rel.startswith(c) for c in CREDENTIAL_STORES)
+
+
 def scan_repo(root: Path, max_size: int) -> list[Finding]:
     findings: list[Finding] = []
     ignore = IgnoreChecker(root)
     for path in iter_files(root, max_size):
         name = path.name
         rel = display(path, root)
+        if _is_credential_store(path):
+            continue
 
         if is_env_file(name):
             text = read_text(path) or ""
@@ -73,9 +92,11 @@ def scan_repo(root: Path, max_size: int) -> list[Finding]:
                 text = read_text(path)
                 if pattern in (".npmrc", ".pypirc") and (not text or not re.search(r"_authToken|password", text)):
                     break
-                if pattern.endswith(".pem") and text and "PRIVATE KEY" not in text:
-                    break
+                if pattern in ("*.pem", "*.key") and (not text or "PRIVATE KEY" not in text):
+                    break  # certificates, Keynote decks (.key), etc.
                 sev = "high" if ignore.in_repo(path) and not ignore.ignored(path) else "low"
+                if TEST_PATH.search(rel):
+                    sev = "low"
                 findings.append(Finding(
                     "FILE003", sev, "secrets", f"{label} inside the agent's workspace", rel,
                     detail="Gitignored, but still readable by agents." if sev == "low" else "Not gitignored, can be committed.",
@@ -100,26 +121,30 @@ def scan_repo(root: Path, max_size: int) -> list[Finding]:
                         fix="Revoke it now, delete this chat log, and keep keys in env vars instead of pasting them.",
                     ))
                     continue
-                if ignore.in_repo(path):
-                    level = sev if not ignore.ignored(path) else "medium"
+                if TEST_PATH.search(rel):
+                    level, note = "low", " (in a test/example folder, likely dummy data; check it isn't real)"
+                elif ignore.in_repo(path):
+                    level, note = (sev if not ignore.ignored(path) else "medium"), ""
                 else:
-                    level = "high" if sev == "critical" else "medium"
+                    level, note = ("high" if sev == "critical" else "medium"), ""
                 findings.append(Finding(
                     rule_id, level, "secrets",
                     f"{label} found", rel, line_of(text, m.start()),
-                    detail=f"Value: {redact(m.group(0))}",
+                    detail=f"Value: {redact(m.group(0))}{note}",
                     fix="Revoke and rotate this credential, then load it from an env var or secret manager.",
                 ))
-        if is_env_file(name) or path.suffix in DOC_EXT:
-            continue  # env files covered above; docs too noisy for generic rule
+        if is_env_file(name) or path.suffix.lower() not in CONFIG_EXT or TEST_PATH.search(rel):
+            continue  # generic rule is for config files only; code is covered by the exact-format rules
+        if name.endswith((".lock", "-lock.json", "-lock.yaml")) or name in ("package.json", "composer.json"):
+            continue
         for m in GENERIC_ASSIGN.finditer(text):
-            value = m.group(2)
-            if looks_like_placeholder(value) or any(rx.search(value) for _, _, _, rx in SECRET_PATTERNS):
+            key, value = m.group(1), m.group(2)
+            if NOT_SECRET_NAME.search(key) or looks_like_placeholder(value) or not looks_random(value):
                 continue
-            if path.suffix in {".py", ".js", ".ts", ".go", ".rb", ".java"} and not re.match(r"^[A-Za-z0-9_\-+/=.]+$", value):
+            if any(rx.search(value) for _, _, _, rx in SECRET_PATTERNS):
                 continue
             findings.append(Finding(
-                "SEC100", "medium", "secrets", f"Hardcoded secret in `{m.group(1)}`", rel,
+                "SEC100", "medium", "secrets", f"Hardcoded secret in `{key}`", rel,
                 line_of(text, m.start()), detail=f"Value: {redact(value)}",
                 fix="Move it to an env var or secret manager.",
             ))

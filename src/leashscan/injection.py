@@ -24,7 +24,7 @@ PHRASES = [
     r"disregard (?:all |any )?(?:the |your )?(?:previous |prior |system )?(?:instructions|prompt|rules)",
     r"forget (?:all |everything )?(?:your |the )?(?:previous |prior )?instructions",
     r"(?:do not|don't|never) (?:tell|inform|mention|reveal|show|alert) (?:this |it )?(?:to )?(?:the )?user",
-    r"without (?:telling|informing|asking|notifying) (?:the )?user",
+    r"without (?:telling|informing|notifying|alerting) (?:the )?user",
     r"new (?:system )?instructions\s*:",
     r"you are now (?:in )?(?:developer|dan|jailbreak|unrestricted|god) mode",
     r"(?:send|post|upload|exfiltrate|forward|leak) (?:the |all |any )?(?:contents of |content of )?"
@@ -36,8 +36,10 @@ PHRASES = [
     r"(?:must|should|need to|please)",
 ]
 PHRASE_RX = re.compile("|".join(f"(?:{p})" for p in PHRASES), re.IGNORECASE)
+# Strong, unambiguous injection phrasing. In ordinary docs only these count (install docs say `curl | sh`).
+STRONG_RX = re.compile("|".join(f"(?:{p})" for p in PHRASES[:7]), re.IGNORECASE)
 HTML_COMMENT = re.compile(r"<!--(.*?)-->", re.DOTALL)
-AI_WORDS = re.compile(r"(?i)\b(ai|llm|assistant|agent|claude|copilot|cursor|codex|gemini|model|chatgpt)\b")
+AI_WORDS = re.compile(r"(?i)\b(ai|llm|claude|copilot|codex|gemini|chatgpt|gpt|language model|ai assistant|coding agent|ai agent)\b")
 IMPERATIVE = re.compile(r"(?i)\b(ignore|run|execute|send|post|curl|delete|must|always|never|do not|don't|instead)\b")
 
 
@@ -71,15 +73,17 @@ def _hidden_unicode(text: str, rel: str, agent_file: bool) -> list[Finding]:
     first = None
     for i, ch in enumerate(text):
         cp = ord(ch)
-        if cp in ZERO_WIDTH:
-            if cp == 0xFEFF and i == 0:
-                continue
-            if cp in (0x200D, 0xFE0F, 0x200C) and i > 0 and ord(text[i - 1]) > 0x2000:
-                continue  # emoji / script joiners
-            zw += 1
-            first = first if first is not None else i
+        if cp not in ZERO_WIDTH or (cp == 0xFEFF and i == 0):
+            continue
+        prev = text[i - 1] if i > 0 else " "
+        nxt = text[i + 1] if i + 1 < len(text) else " "
+        # Persian, Hindi, Thai, emoji etc. use joiners legitimately. Smuggling hides them inside ASCII text.
+        if ord(prev) > 0x7F or ord(nxt) > 0x7F:
+            continue
+        zw += 1
+        first = first if first is not None else i
     if zw >= (1 if agent_file else 3):
-        out.append(Finding("INJ003", "high" if agent_file else "medium", "injection",
+        out.append(Finding("INJ003", "high" if agent_file else "low", "injection",
                            f"{zw} zero-width character(s) hidden in text", rel, line_of(text, first or 0),
                            detail="Often used to smuggle or obfuscate instructions for AI agents.",
                            fix="Strip them: `leashscan` reports exact lines; most editors can show invisible chars."))
@@ -101,9 +105,9 @@ def scan(root: Path, max_size: int) -> list[Finding]:
             continue
         rel = display(path, root)
         out += _hidden_unicode(text, rel, agent_file)
-        for m in PHRASE_RX.finditer(text):
+        for m in (PHRASE_RX if agent_file else STRONG_RX).finditer(text):
             out.append(Finding(
-                "INJ010", "high" if agent_file else "medium", "injection",
+                "INJ010", "high" if agent_file else "low", "injection",
                 "Prompt-injection phrase" + (" in an agent instructions file" if agent_file else ""), rel,
                 line_of(text, m.start()), detail=f"\"{m.group(0)[:120]}\"",
                 fix="If you didn't write this, remove it. Agents treat this text as instructions.",
@@ -115,7 +119,7 @@ def scan(root: Path, max_size: int) -> list[Finding]:
                     if PHRASE_RX.search(body):
                         continue  # already reported
                     out.append(Finding(
-                        "INJ011", "medium", "injection", "Hidden HTML comment with instructions for AI", rel,
+                        "INJ011", "medium" if agent_file else "low", "injection", "Hidden HTML comment with instructions for AI", rel,
                         line_of(text, m.start()), detail=f"\"{' '.join(body.split())[:120]}\"",
                         fix="Rendered Markdown hides this from humans but agents read it. Review or remove.",
                     ))
