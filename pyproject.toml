@@ -8,6 +8,7 @@ version = "0.1.6"
 description = "Is your AI agent on a leash? Scan what Claude Code, Cursor, Codex, Copilot and MCP servers can reach: secrets, risky configs, YOLO permissions and hidden prompt injection."
 readme = "README.md"
 license = "MIT"
+authors = [{ name = "Abdulraouf Misellati" }]
 requires-python = ">=3.9"
 dependencies = []
 keywords = ["security", "ai-agents", "mcp", "claude-code", "cursor", "codex", "prompt-injection", "secrets", "scanner", "devsecops"]
