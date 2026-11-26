@@ -6,3 +6,4 @@ dist/
 leaky-app/
 leashscan-report.html
 *.sarif
+uv.lock
