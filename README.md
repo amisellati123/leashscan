@@ -18,7 +18,7 @@ pipx run leashscan            # or: uvx leashscan
 ```
 
 **New: use it as a skill.** Ask your AI agent *"is my setup safe?"* and it scans, explains and fixes with your OK.<br>
-Claude Code: `/plugin install leashscan --marketplace amisellati123/leashscan` · [Cursor, Codex and others](#use-it-as-an-agent-skill)
+Claude Code, in your terminal: `claude plugin marketplace add amisellati123/leashscan && claude plugin install leashscan@leashscan` · [Cursor, Codex and others](#use-it-as-an-agent-skill)
 
 <img src="docs/screenshot.png" alt="leashscan output showing an F grade" width="820">
 
@@ -114,13 +114,20 @@ leashscan ships as an [Agent Skill](https://agentskills.io), so your AI coding a
 
 Hidden text found in scanned files is treated as data, never as instructions, so a poisoned `AGENTS.md` can't hijack the agent doing the audit.
 
-**Claude Code** (plugin, updates with the repo):
+**Claude Code** (plugin, updates with the repo). In your regular terminal:
+
+```bash
+claude plugin marketplace add amisellati123/leashscan
+claude plugin install leashscan@leashscan
+```
+
+Or inside a Claude Code session (these are typed in Claude Code, not in your shell):
 
 ```
 /plugin install leashscan --marketplace amisellati123/leashscan
 ```
 
-On Claude Code older than 2.1.275, use two steps: `/plugin marketplace add amisellati123/leashscan`, then `/plugin install leashscan@leashscan`. Run it with `/leashscan:leashscan`, or just ask.
+Then start `claude` in any project and ask *"is my AI setup safe?"*, or run `/leashscan:leashscan`.
 
 **Cursor, Codex and other Agent Skills tools** (copy the skill folder):
 
