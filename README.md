@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: read, security-events: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: amisellati123/leashscan@v0.1.0
         with:
           fail-on: high
