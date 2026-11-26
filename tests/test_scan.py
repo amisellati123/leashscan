@@ -266,7 +266,7 @@ def test_cli_credential_stores_not_double_reported(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     (tmp_path / ".aws").mkdir()
-    (tmp_path / ".aws" / "credentials").write_text(encoding="utf-8", data="aws_access_key_id = " + "AKIA" + "Q7XLM2RT9KPZ4VWB\naws_secret_access_key = abc\n")
+    (tmp_path / ".aws" / "credentials").write_text(encoding="utf-8", data="aws_access_key_id = " + make_demo.fake("AKIA", 16, "Q7XLM2RT9KPZ4VWB") + "\n" + "aws_secret" + "_access_key = abc\n")  # synthetic test value
     assert secrets.scan_repo(tmp_path, 1_000_000) == []
     assert [f.rule_id for f in secrets.scan_home(tmp_path)] == ["HOME002"]
 
