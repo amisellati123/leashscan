@@ -276,6 +276,6 @@ def test_windows_line_endings_reports_not_rescanned(tmp_path):
     for fmt, ext in [("html", "html"), ("text", "txt"), ("json", "json")]:
         out = root / f"r.{ext}"
         cli.main([str(root), "-f", fmt, "-o", str(out)])
-        out.write_bytes(out.read_bytes().replace(b"\n", b"\r\n"))
+        out.write_bytes(out.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     found = cli.scan_paths([root], False, 1_000_000)
     assert not [f.path for f in found if f.path.startswith("r.")]
