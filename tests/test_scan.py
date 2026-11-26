@@ -279,3 +279,70 @@ def test_windows_line_endings_reports_not_rescanned(tmp_path):
         out.write_bytes(out.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     found = cli.scan_paths([root], False, 1_000_000)
     assert not [f.path for f in found if f.path.startswith("r.")]
+
+
+def _env_case(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir()
+    return "OPENAI_API_KEY=" + make_demo.fake("sk-proj-", 48) + "\n"
+
+
+def test_key_in_env_outside_git_is_fine(tmp_path, monkeypatch):
+    env = _env_case(tmp_path, monkeypatch)
+    proj = tmp_path / "launchpad" / "backend"
+    proj.mkdir(parents=True)
+    (proj / ".env").write_text(env, encoding="utf-8")
+    found = secrets.scan_repo(tmp_path / "launchpad", 1_000_000)
+    assert [(f.rule_id, f.severity) for f in found] == [("FILE002", "low")]
+
+
+def test_key_in_gitignored_env_is_fine(tmp_path, monkeypatch):
+    import subprocess
+    env = _env_case(tmp_path, monkeypatch)
+    repo = tmp_path / "app"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (repo / ".env").write_text(env, encoding="utf-8")
+    assert [(f.rule_id, f.severity) for f in secrets.scan_repo(repo, 1_000_000)] == [("FILE002", "low")]
+
+
+def test_key_in_unignored_env_in_repo_is_flagged(tmp_path, monkeypatch):
+    import subprocess
+    env = _env_case(tmp_path, monkeypatch)
+    repo = tmp_path / "app"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / ".env").write_text(env, encoding="utf-8")
+    found = {(f.rule_id, f.severity) for f in secrets.scan_repo(repo, 1_000_000)}
+    assert found == {("FILE001", "high"), ("SEC005", "critical")}
+
+
+def test_key_in_committed_env_is_critical(tmp_path, monkeypatch):
+    import subprocess
+    env = _env_case(tmp_path, monkeypatch)
+    repo = tmp_path / "app"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / ".env").write_text(env, encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", ".env"], check=True)
+    found = {(f.rule_id, f.severity) for f in secrets.scan_repo(repo, 1_000_000)}
+    assert found == {("FILE004", "critical"), ("SEC005", "critical")}
+
+
+def test_deny_rule_clears_env_readable_note(tmp_path, monkeypatch):
+    env = _env_case(tmp_path, monkeypatch)
+    proj = tmp_path / "launchpad"
+    (proj / "backend").mkdir(parents=True)
+    (proj / "backend" / ".env").write_text(env, encoding="utf-8")
+    (proj / ".claude").mkdir()
+    (proj / ".claude" / "settings.json").write_text('{"permissions":{"deny":["Read(./**/.env*)"]}}', encoding="utf-8")
+    assert secrets.scan_repo(proj, 1_000_000) == []
+
+
+def test_hardcoded_key_in_source_still_flagged(tmp_path, monkeypatch):
+    _env_case(tmp_path, monkeypatch)
+    (tmp_path / "app.py").write_text('client = OpenAI(api_key="' + make_demo.fake("sk-proj-", 48) + '")\n', encoding="utf-8")
+    found = [(f.rule_id, f.severity) for f in secrets.scan_repo(tmp_path, 1_000_000)]
+    assert found == [("SEC005", "high")]

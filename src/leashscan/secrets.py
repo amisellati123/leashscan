@@ -54,33 +54,57 @@ def _is_credential_store(path: Path) -> bool:
     return any(rel == c or rel.startswith(c) for c in CREDENTIAL_STORES)
 
 
+def _env_denied(root: Path) -> bool:
+    """True if Claude Code is told not to read .env files (project or user settings)."""
+    import json
+    candidates = [root / ".claude" / "settings.json", root / ".claude" / "settings.local.json",
+                  Path.home() / ".claude" / "settings.json", Path.home() / ".claude" / "settings.local.json"]
+    for c in candidates:
+        try:
+            data = json.loads(c.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        deny = (data.get("permissions") or {}).get("deny") or [] if isinstance(data, dict) else []
+        if any(isinstance(d, str) and d.startswith("Read(") and ".env" in d for d in deny):
+            return True
+    return False
+
+
 def scan_repo(root: Path, max_size: int) -> list[Finding]:
     findings: list[Finding] = []
     ignore = IgnoreChecker(root)
+    env_denied = _env_denied(Path(root))
     for path in iter_files(root, max_size):
         name = path.name
         rel = display(path, root)
         if _is_credential_store(path):
             continue
 
+        env_status = None  # for .env files: "committed" | "exposed" | "safe"
         if is_env_file(name):
             text = read_text(path) or ""
             has_values = bool(re.search(r"(?m)^\s*[A-Za-z_][A-Za-z0-9_]*\s*=\s*\S", text))
+            if ignore.tracked(path):
+                env_status = "committed"
+            elif ignore.in_repo(path) and not ignore.ignored(path):
+                env_status = "exposed"
+            else:
+                env_status = "safe"
             if not has_values:
                 pass
-            elif ignore.tracked(path):
+            elif env_status == "committed":
                 findings.append(Finding(
                     "FILE004", "critical", "secrets", "Env file is committed to git", rel,
                     detail="It's in the repo history. Anyone with access to the repo (or a fork, or a leaked clone) has these values.",
                     fix=f"Rotate every secret in it, then `git rm --cached {name}`, add it to .gitignore and commit.",
                 ))
-            elif ignore.in_repo(path) and not ignore.ignored(path):
+            elif env_status == "exposed":
                 findings.append(Finding(
                     "FILE001", "high", "secrets", "Env file is not gitignored", rel,
                     detail="This file holds real values and one `git add .` away from being committed.",
                     fix=f"Add `{name}` to the project's .gitignore.",
                 ))
-            else:
+            elif not env_denied:
                 findings.append(Finding(
                     "FILE002", "low", "secrets", "Env file readable by agents", rel,
                     detail="Not committable, but any AI agent in this folder can read it and send it to a model.",
@@ -121,7 +145,13 @@ def scan_repo(root: Path, max_size: int) -> list[Finding]:
                         fix="Revoke it now, delete this chat log, and keep keys in env vars instead of pasting them.",
                     ))
                     continue
-                if TEST_PATH.search(rel):
+                if env_status == "safe":
+                    continue  # a .env outside git (or gitignored) is the right place for keys
+                if env_status == "committed":
+                    level, note = "critical", " (this .env is committed to git)"
+                elif env_status == "exposed":
+                    level, note = sev, " (this .env is not gitignored)"
+                elif TEST_PATH.search(rel):
                     level, note = "low", " (in a test/example folder, likely dummy data; check it isn't real)"
                 elif ignore.in_repo(path):
                     level, note = (sev if not ignore.ignored(path) else "medium"), ""
