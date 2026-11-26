@@ -17,6 +17,9 @@ leaked secrets, YOLO permissions, risky MCP configs and invisible prompt injecti
 pipx run leashscan            # or: uvx leashscan
 ```
 
+**New: use it as a skill.** Ask your AI agent *"is my setup safe?"* and it scans, explains and fixes with your OK.<br>
+Claude Code: `/plugin install leashscan --marketplace amisellati123/leashscan` · [Cursor, Codex and others](#use-it-as-an-agent-skill)
+
 <img src="docs/screenshot.png" alt="leashscan output showing an F grade" width="820">
 
 </div>
@@ -99,6 +102,39 @@ jobs:
 ```
 
 You get a summary on every run, results in the Security tab, and a failed check when something high or critical shows up.
+
+## Use it as an agent skill
+
+leashscan ships as an [Agent Skill](https://agentskills.io), so your AI coding agent can run the audit for you. Ask *"is my AI setup safe?"* or *"scan my setup"* and the agent will:
+
+1. Run leashscan (offline, read-only)
+2. Explain the grade and each finding in plain words, without ever showing a secret
+3. Offer specific fixes and apply only the ones you approve
+4. Re-scan and show the before and after grade
+
+Hidden text found in scanned files is treated as data, never as instructions, so a poisoned `AGENTS.md` can't hijack the agent doing the audit.
+
+**Claude Code** (plugin, updates with the repo):
+
+```
+/plugin install leashscan --marketplace amisellati123/leashscan
+```
+
+On Claude Code older than 2.1.275, use two steps: `/plugin marketplace add amisellati123/leashscan`, then `/plugin install leashscan@leashscan`. Run it with `/leashscan:leashscan`, or just ask.
+
+**Cursor, Codex and other Agent Skills tools** (copy the skill folder):
+
+```bash
+git clone --depth 1 https://github.com/amisellati123/leashscan /tmp/leashscan
+# Cursor (all projects)
+mkdir -p ~/.cursor/skills && cp -r /tmp/leashscan/plugins/leashscan/skills/leashscan ~/.cursor/skills/
+# Codex (this project)
+mkdir -p .agents/skills && cp -r /tmp/leashscan/plugins/leashscan/skills/leashscan .agents/skills/
+# Claude Code without the plugin system
+mkdir -p ~/.claude/skills && cp -r /tmp/leashscan/plugins/leashscan/skills/leashscan ~/.claude/skills/
+```
+
+The skill needs Python 3.9+ so it can run the `leashscan` command (via `uvx`, `pipx` or `pip install leashscan`).
 
 ## In your IDE
 

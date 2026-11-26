@@ -12,6 +12,10 @@ Links already point to github.com/amisellati123/leashscan.
 - [ ] Record a 20-second GIF (`vhs` or `asciinema`) of scanning the demo project, add it to the top of README
 - [ ] Run it on your own laptop and post your real grade (people love the honesty)
 
+## The skill angle (use it in every post)
+
+leashscan is also an Agent Skill: inside Claude Code, Cursor or Codex you just ask "is my setup safe?" and the agent scans, explains and fixes with your OK. Skills are the top format on GitHub Trending right now, so lead with this line.
+
 ## Show HN
 
 **Title:** Show HN: Leashscan – see what your AI coding agents and MCP servers can reach

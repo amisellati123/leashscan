@@ -346,3 +346,57 @@ def test_hardcoded_key_in_source_still_flagged(tmp_path, monkeypatch):
     (tmp_path / "app.py").write_text('client = OpenAI(api_key="' + make_demo.fake("sk-proj-", 48) + '")\n', encoding="utf-8")
     found = [(f.rule_id, f.severity) for f in secrets.scan_repo(tmp_path, 1_000_000)]
     assert found == [("SEC005", "high")]
+
+
+# ---- the agent skill / Claude Code plugin must stay valid and in sync with the scanner ----
+
+SKILL_DIR = ROOT / "plugins" / "leashscan" / "skills" / "leashscan"
+
+
+def _frontmatter(text):
+    import re as _re
+    m = _re.match(r"^---\n(.*?)\n---\n", text, _re.S)
+    assert m, "SKILL.md must start with YAML frontmatter"
+    out = {}
+    for line in m.group(1).splitlines():
+        if line and not line.startswith(" ") and ":" in line:
+            k, v = line.split(":", 1)
+            out[k.strip()] = v.strip().strip('"')
+    return out
+
+
+def test_skill_follows_agent_skills_spec():
+    import re as _re
+    text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    fm = _frontmatter(text)
+    assert _re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", fm["name"]) and len(fm["name"]) <= 64
+    assert fm["name"] == SKILL_DIR.name
+    assert 0 < len(fm["description"]) <= 1024
+    assert len(fm.get("compatibility", "x")) <= 500
+    assert len(text.splitlines()) < 500
+
+
+def test_skill_covers_every_rule():
+    import re as _re
+    code = set()
+    for f in (ROOT / "src" / "leashscan").glob("*.py"):
+        code |= set(_re.findall(r'"((?:SEC|FILE|MCP|PERM|INJ|HOME)\d{3})"', f.read_text(encoding="utf-8")))
+    text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    named = set(_re.findall(r"(?:SEC|FILE|MCP|PERM|INJ|HOME)\d{3}", text))
+    for a, b in _re.findall(r"`((?:SEC|HOME)\d{3})` to `((?:SEC|HOME)\d{3})`", text):
+        named |= {f"{a[:-3]}{i:03d}" for i in range(int(a[-3:]), int(b[-3:]) + 1)}
+    assert code - named == set(), f"rules missing from SKILL.md: {sorted(code - named)}"
+
+
+def test_plugin_manifests_match_package():
+    from leashscan import __version__
+    market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
+    entry = market["plugins"][0]
+    assert market["name"] and market["owner"]["name"] and entry["name"] == "leashscan"
+    plugin_root = ROOT / entry["source"]
+    assert (plugin_root / "skills" / "leashscan" / "SKILL.md").is_file()
+    plugin = json.loads((plugin_root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert plugin["name"] == "leashscan"
+    assert plugin["version"] == __version__
+    fm = _frontmatter((SKILL_DIR / "SKILL.md").read_text(encoding="utf-8"))
+    assert f'version: "{__version__}"' in (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8"), fm

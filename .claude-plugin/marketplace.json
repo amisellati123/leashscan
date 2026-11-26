@@ -1,0 +1,16 @@
+{
+  "name": "leashscan",
+  "description": "leashscan: audit what AI coding agents and MCP servers can reach, as a skill for Claude Code and other agents.",
+  "owner": {
+    "name": "Abdulraouf Misellati",
+    "url": "https://github.com/amisellati123"
+  },
+  "plugins": [
+    {
+      "name": "leashscan",
+      "source": "./plugins/leashscan",
+      "description": "Audit what AI coding agents and MCP servers can reach, and fix it with your approval.",
+      "category": "security"
+    }
+  ]
+}
