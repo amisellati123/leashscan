@@ -1,0 +1,51 @@
+name: "leashscan: AI agent exposure scan"
+description: "Find secrets, risky MCP configs, YOLO agent permissions and hidden prompt injection before your AI agents do."
+author: "leashscan"
+branding:
+  icon: "shield"
+  color: "orange"
+
+inputs:
+  path:
+    description: "Folder(s) to scan, space separated"
+    default: "."
+  fail-on:
+    description: "Fail the job at this severity or above: critical, high, medium, low, none"
+    default: "high"
+  sarif:
+    description: "Upload results to GitHub code scanning (needs security-events: write)"
+    default: "true"
+
+outputs:
+  grade:
+    description: "Letter grade A-F"
+    value: ${{ steps.scan.outputs.grade }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install leashscan
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}"
+    - name: Scan
+      id: scan
+      shell: bash
+      run: |
+        leashscan ${{ inputs.path }} -f sarif -o leashscan.sarif --fail-on none
+        leashscan ${{ inputs.path }} -f markdown -o leashscan.md --fail-on none
+        cat leashscan.md >> "$GITHUB_STEP_SUMMARY"
+        grade=$(leashscan ${{ inputs.path }} -f json | python -c "import json,sys;print(json.load(sys.stdin)['grade'])")
+        echo "grade=$grade" >> "$GITHUB_OUTPUT"
+    - name: Upload SARIF
+      if: ${{ inputs.sarif == 'true' && always() }}
+      uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true
+      with:
+        sarif_file: leashscan.sarif
+        category: leashscan
+    - name: Enforce threshold
+      shell: bash
+      run: leashscan ${{ inputs.path }} --fail-on ${{ inputs.fail-on }} --no-color

@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "leashscan: scan this workspace",
+      "type": "shell",
+      "command": "leashscan",
+      "args": ["${workspaceFolder}"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "leashscan: workspace + home (full audit)",
+      "type": "shell",
+      "command": "leashscan",
+      "args": ["${workspaceFolder}", "--home"],
+      "problemMatcher": []
+    },
+    {
+      "label": "leashscan: HTML report for the client",
+      "type": "shell",
+      "command": "leashscan",
+      "args": ["${workspaceFolder}", "--home", "-f", "html", "-o", "${workspaceFolder}/leashscan-report.html"],
+      "problemMatcher": []
+    }
+  ]
+}
